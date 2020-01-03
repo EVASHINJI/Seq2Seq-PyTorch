@@ -122,11 +122,12 @@ class SupervisedTrainer(object):
 
                 # Checkpoint
                 if step % self.checkpoint_every == 0 or step == total_steps:
-                    Checkpoint(model=model,
-                               optimizer=self.optimizer,
-                               epoch=epoch, step=step,
-                               input_vocab=data.fields[seq2seq.src_field_name].vocab,
-                               output_vocab=data.fields[seq2seq.tgt_field_name].vocab).save(self.expt_dir)
+                    torch.save(model.state_dict(), os.path.join(self.expt_dir, str(step)+'.pt'))
+                    # Checkpoint(model=model,
+                    #            optimizer=self.optimizer,
+                    #            epoch=epoch, step=step,
+                    #            input_vocab=data.fields[seq2seq.src_field_name].vocab,
+                    #            output_vocab=data.fields[seq2seq.tgt_field_name].vocab).save(self.expt_dir)
 
             if step_elapsed == 0: continue
 
