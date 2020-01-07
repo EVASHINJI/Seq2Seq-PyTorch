@@ -5,48 +5,47 @@ import random
 import time
 
 import torch
-import torchtext
 from torch import optim
 
 import seq2seq
 from seq2seq.evaluator import Evaluator
 from seq2seq.loss import NLLLoss
 from seq2seq.optim import Optimizer
-from seq2seq.util.checkpoint import Checkpoint
 
 class SupervisedTrainer(object):
     """ The SupervisedTrainer class helps in setting up a training framework in a
     supervised setting.
 
     Args:
-        expt_dir (optional, str): experiment Directory to store details of the experiment,
+        model_dir (optional, str): experiment Directory to store details of the experiment,
             by default it makes a folder in the current directory to store the details (default: `experiment`).
         loss (seq2seq.loss.loss.Loss, optional): loss for training, (default: seq2seq.loss.NLLLoss)
         batch_size (int, optional): batch size for experiment, (default: 64)
         checkpoint_every (int, optional): number of batches to checkpoint after, (default: 100)
     """
-    def __init__(self, expt_dir='experiment', loss=NLLLoss(), batch_size=64,
-                 random_seed=None,
-                 checkpoint_every=100, print_every=100, device=None):
+    def __init__(self, model_dir='experiment', loss=NLLLoss(), batch_size=64, random_seed=None,
+                 checkpoint_every=100, print_every=100, max_epochs=5, max_steps=10000, device=None):
         self._trainer = "Simple Trainer"
         self.random_seed = random_seed
         if random_seed is not None:
             random.seed(random_seed)
             torch.manual_seed(random_seed)
         self.loss = loss
-        self.evaluator = Evaluator(loss=self.loss, batch_size=batch_size)
         self.optimizer = None
         self.checkpoint_every = checkpoint_every
         self.print_every = print_every
-        self.device = device
-
-        if not os.path.isabs(expt_dir):
-            expt_dir = os.path.join(os.getcwd(), expt_dir)
-        self.expt_dir = expt_dir
-        if not os.path.exists(self.expt_dir):
-            os.makedirs(self.expt_dir)
+        self.max_steps = max_steps
+        self.max_epochs = max_epochs
         self.batch_size = batch_size
+        self.device = device
+        self.evaluator = Evaluator(loss=self.loss, batch_size=batch_size, device=device)
 
+        if not os.path.isabs(model_dir):
+            model_dir = os.path.join(os.getcwd(), model_dir)
+        self.model_dir = model_dir
+        if not os.path.exists(self.model_dir):
+            os.makedirs(self.model_dir)
+        
         self.logger = logging.getLogger(__name__)
 
     def _train_batch(self, input_variable, input_lengths, target_variable, model, teacher_forcing_ratio):
@@ -66,87 +65,75 @@ class SupervisedTrainer(object):
 
         return loss.get_loss()
 
-    def _train_epoches(self, data, model, n_epochs, start_epoch, start_step,
+    def _train_epoches(self, data, model, start_step,
                        dev_data=None, teacher_forcing_ratio=0):
+        device = self.device
         log = self.logger
+        max_epochs = self.max_epochs
+        max_steps = self.max_steps
 
         print_loss_total = 0  # Reset every print_every
         epoch_loss_total = 0  # Reset every epoch
 
-        device = torch.device('cuda:0') if torch.cuda.is_available() else -1
-        batch_iterator = torchtext.data.BucketIterator(
-            dataset=data, batch_size=self.batch_size,
-            sort=False, sort_within_batch=True,
-            sort_key=lambda x: len(x.src),
-            device=device, repeat=False)
+        step = 0
+        steps_per_epoch = len(data) // self.batch_size
+        start_epoch = (start_step - step) // steps_per_epoch
+        step = start_step - start_epoch * steps_per_epoch
+        for batch in data:
+            if step >= start_step: break
+            step += 1
 
-        steps_per_epoch = len(batch_iterator)
-        total_steps = steps_per_epoch * n_epochs
-
-        step = start_step
-        step_elapsed = 0
-        for epoch in range(start_epoch, n_epochs + 1):
-            log.debug("Epoch: %d, Step: %d" % (epoch, step))
-
-            batch_generator = batch_iterator.__iter__()
-            # consuming seen batches from previous training
-            for _ in range((epoch - 1) * steps_per_epoch, step):
-                next(batch_generator)
-
+        for epoch in range(start_epoch, max_epochs):
             model.train(True)
-            for batch in batch_generator:
+            for batch in data:
                 step += 1
-                step_elapsed += 1
+                src_variables = batch['src'].to(device)
+                tgt_variables = batch['tgt'].to(device)
+                src_lens = batch['src_len'].view(-1).to(device)
+                tgt_lens = batch['tgt_len'].view(-1).to(device)
 
-                input_variables, input_lengths = getattr(batch, seq2seq.src_field_name)
-                target_variables = getattr(batch, seq2seq.tgt_field_name)
-                if device:
-                    input_variables = input_variables.to(self.device)
-                    input_lengths = input_lengths.to(self.device)
-                    target_variables = target_variables.to(self.device)
+                # print(src_variables, src_lens, tgt_variables)
+                # exit(0)
 
-                loss = self._train_batch(input_variables, input_lengths.tolist(), target_variables, model, teacher_forcing_ratio)
+                loss = self._train_batch(src_variables, src_lens.tolist(), tgt_variables, model, teacher_forcing_ratio)
 
                 # Record average loss
                 print_loss_total += loss
                 epoch_loss_total += loss
 
-                if step % self.print_every == 0 and step_elapsed > self.print_every:
+                if step % self.print_every == 0:
                     print_loss_avg = print_loss_total / self.print_every
                     print_loss_total = 0
-                    log_msg = 'Progress: %d%%, Train %s: %.4f' % (
-                        step / total_steps * 100,
-                        self.loss.name,
-                        print_loss_avg)
+                    log_msg = f"Process {100.0*(step%steps_per_epoch)/steps_per_epoch:.2f}% of Epoch {epoch}, Total step {step}, Train {self.loss.name} {print_loss_avg:.4f}" 
                     log.info(log_msg)
 
                 # Checkpoint
-                if step % self.checkpoint_every == 0 or step == total_steps:
-                    torch.save(model.state_dict(), os.path.join(self.expt_dir, str(step)+'.pt'))
-                    # Checkpoint(model=model,
-                    #            optimizer=self.optimizer,
-                    #            epoch=epoch, step=step,
-                    #            input_vocab=data.fields[seq2seq.src_field_name].vocab,
-                    #            output_vocab=data.fields[seq2seq.tgt_field_name].vocab).save(self.expt_dir)
+                if step % self.checkpoint_every == 0:
+                    torch.save(model.state_dict(), os.path.join(self.model_dir, str(step)+'.pt'))
+                
+                if step >= max_steps:
+                    break
 
-            if step_elapsed == 0: continue
+            torch.save(model.state_dict(), os.path.join(self.model_dir, str(step)+'.pt'))
+            if step >= max_steps:
+                log.info(f"Finish max steps {max_steps} at epoch {epoch}.")
+                break
 
             epoch_loss_avg = epoch_loss_total / min(steps_per_epoch, step - start_step)
             epoch_loss_total = 0
-            log_msg = "Finished epoch %d: Train %s: %.4f" % (epoch, self.loss.name, epoch_loss_avg)
+            log_msg = f"Finished epoch {epoch}, Train {self.loss.name} {epoch_loss_avg:.4f}"
             if dev_data is not None:
                 dev_loss, accuracy = self.evaluator.evaluate(model, dev_data)
                 self.optimizer.update(dev_loss, epoch)
-                log_msg += ", Dev %s: %.4f, Accuracy: %.4f" % (self.loss.name, dev_loss, accuracy)
+                log_msg += f", Dev {self.loss.name}: {dev_loss:.4f}, Accuracy: {accuracy}"
                 model.train(mode=True)
             else:
                 self.optimizer.update(epoch_loss_avg, epoch)
-
             log.info(log_msg)
+            
+            log.info(f"Finish Epoch {epoch}, Total steps {step}.")
 
-    def train(self, model, data, num_epochs=5,
-              resume=False, dev_data=None,
-              optimizer=None, teacher_forcing_ratio=0):
+    def train(self, model, data, start_step=0, dev_data=None, optimizer=None, teacher_forcing_ratio=0):
         """ Run training for a given model.
 
         Args:
@@ -162,32 +149,13 @@ class SupervisedTrainer(object):
         Returns:
             model (seq2seq.models): trained model.
         """
-        # If training is set to resume
-        if resume:
-            latest_checkpoint_path = Checkpoint.get_latest_checkpoint(self.expt_dir)
-            resume_checkpoint = Checkpoint.load(latest_checkpoint_path)
-            model = resume_checkpoint.model
-            self.optimizer = resume_checkpoint.optimizer
-
-            # A walk around to set optimizing parameters properly
-            resume_optim = self.optimizer.optimizer
-            defaults = resume_optim.param_groups[0]
-            defaults.pop('params', None)
-            defaults.pop('initial_lr', None)
-            self.optimizer.optimizer = resume_optim.__class__(model.parameters(), **defaults)
-
-            start_epoch = resume_checkpoint.epoch
-            step = resume_checkpoint.step
-        else:
-            start_epoch = 1
-            step = 0
-            if optimizer is None:
-                optimizer = Optimizer(optim.Adam(model.parameters()), max_grad_norm=5)
-            self.optimizer = optimizer
+        
+        if optimizer is None:
+            optimizer = Optimizer(optim.Adam(model.parameters()), max_grad_norm=5)
+        self.optimizer = optimizer
 
         self.logger.info("Optimizer: %s, Scheduler: %s" % (self.optimizer.optimizer, self.optimizer.scheduler))
 
-        self._train_epoches(data, model, num_epochs,
-                            start_epoch, step, dev_data=dev_data,
+        self._train_epoches(data, model, start_step, dev_data=dev_data,
                             teacher_forcing_ratio=teacher_forcing_ratio)
         return model

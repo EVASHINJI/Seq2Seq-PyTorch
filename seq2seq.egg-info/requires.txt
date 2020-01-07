@@ -1,9 +1,0 @@
-numpy
-torch
-torchtext
-
-[dev]
-check-manifest
-
-[test]
-coverage
