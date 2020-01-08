@@ -76,12 +76,14 @@ class SupervisedTrainer(object):
         epoch_loss_total = 0  # Reset every epoch
 
         step = 0
-        steps_per_epoch = len(data) // self.batch_size
+        steps_per_epoch = len(data)
         start_epoch = (start_step - step) // steps_per_epoch
-        step = start_step - start_epoch * steps_per_epoch
+        step = start_epoch * steps_per_epoch
         for batch in data:
             if step >= start_step: break
             step += 1
+        if start_epoch or start_step:
+            logging.info(f"Resume from Epoch {start_epoch}, Step {start_step}")
 
         for epoch in range(start_epoch, max_epochs):
             model.train(True)
@@ -116,16 +118,16 @@ class SupervisedTrainer(object):
 
             torch.save(model.state_dict(), os.path.join(self.model_dir, str(step)+'.pt'))
             if step >= max_steps:
-                log.info(f"Finish max steps {max_steps} at epoch {epoch}.")
+                log.info(f"Finish max steps {max_steps} at Epoch {epoch}.")
                 break
 
             epoch_loss_avg = epoch_loss_total / min(steps_per_epoch, step - start_step)
             epoch_loss_total = 0
-            log_msg = f"Finished epoch {epoch}, Train {self.loss.name} {epoch_loss_avg:.4f}"
+            log_msg = f"Finished Epoch {epoch}, Train {self.loss.name} {epoch_loss_avg:.4f}"
             if dev_data is not None:
                 dev_loss, accuracy = self.evaluator.evaluate(model, dev_data)
                 self.optimizer.update(dev_loss, epoch)
-                log_msg += f", Dev {self.loss.name}: {dev_loss:.4f}, Accuracy: {accuracy}"
+                log_msg += f", Dev {self.loss.name}: {dev_loss:.4f}, Accuracy: {accuracy:.4f}"
                 model.train(mode=True)
             else:
                 self.optimizer.update(epoch_loss_avg, epoch)

@@ -1,5 +1,6 @@
 import torch
 from torch.utils.data.dataset import Dataset
+from torch.nn.utils.rnn import pad_sequence
 
 from tqdm import tqdm
 
@@ -14,36 +15,52 @@ from tqdm import tqdm
 #     return {"post": torch.LongTensor(src_ids), 
 #             "resp": torch.LongTensor(tgt_ids)}
 
-def translate_data(subs, obj):
-    import re
-    import unicodedata
-    def unicodeToAscii(s):
-        return ''.join(
-            c for c in unicodedata.normalize('NFD', s)
-            if unicodedata.category(c) != 'Mn'
-        )
 
-    def normalizeString(s):
-        s = unicodeToAscii(s.lower().strip())
-        s = re.sub(r"([.!?])", r" \1", s)
-        s = re.sub(r"[^a-zA-Z.!?]+", r" ", s)
-        return s
+class TranslateData():
+    def __init__(self, pad=0):
+        self.pad = pad
 
-    src, tgt = subs
-    src = normalizeString(src).split(' ')
-    tgt = normalizeString(tgt).split(' ')
-    tgt = [obj.tgt_vocab.sos_token] + tgt + [obj.tgt_vocab.eos_token]
-    if len(src) > obj.max_src_length or len(tgt) > obj.max_tgt_length:
-        return None
-    src_length, tgt_length = len(src), len(tgt)
-    src.extend([obj.src_vocab.pad_token] * (obj.max_src_length - src_length))
-    tgt.extend([obj.tgt_vocab.pad_token] * (obj.max_tgt_length - tgt_length))
-    src_ids = [obj.src_vocab.word2idx[w] for w in src]
-    tgt_ids = [obj.tgt_vocab.word2idx[w] for w in tgt]
-    return {"src": torch.LongTensor(src_ids), 
-            "tgt": torch.LongTensor(tgt_ids), 
-            "src_len": torch.LongTensor([src_length]),
-            "tgt_len": torch.LongTensor([tgt_length])}
+    def collate_fn(self, batch):
+        src = list(map(lambda x: x['src'], batch))
+        tgt = list(map(lambda x: x['tgt'], batch))
+        src_len = list(map(lambda x: x['src_len'], batch))
+        tgt_len = list(map(lambda x: x['tgt_len'], batch))
+        src = torch.transpose(pad_sequence(src, padding_value=self.pad), 0, 1)
+        tgt = torch.transpose(pad_sequence(tgt, padding_value=self.pad), 0, 1)
+        src_len = torch.stack(src_len)
+        tgt_len = torch.stack(tgt_len)
+        return {'src': src, 'tgt': tgt, 'src_len': src_len, 'tgt_len': tgt_len}
+
+    def translate_data(self, subs, obj):
+        import re
+        import unicodedata
+        def unicodeToAscii(s):
+            return ''.join(
+                c for c in unicodedata.normalize('NFD', s)
+                if unicodedata.category(c) != 'Mn'
+            )
+
+        def normalizeString(s):
+            s = unicodeToAscii(s.lower().strip())
+            s = re.sub(r"([.!?])", r" \1", s)
+            s = re.sub(r"[^a-zA-Z.!?]+", r" ", s)
+            return s
+
+        src, tgt = subs
+        src = normalizeString(src).split(' ')
+        tgt = normalizeString(tgt).split(' ')
+        tgt = [obj.tgt_vocab.sos_token] + tgt + [obj.tgt_vocab.eos_token]
+        if len(src) > obj.max_src_length or len(tgt) > obj.max_tgt_length:
+            return None
+        src_length, tgt_length = len(src), len(tgt)
+        # src.extend([obj.src_vocab.pad_token] * (obj.max_src_length - src_length))
+        # tgt.extend([obj.tgt_vocab.pad_token] * (obj.max_tgt_length - tgt_length))
+        src_ids = [obj.src_vocab.word2idx[w] for w in src]
+        tgt_ids = [obj.tgt_vocab.word2idx[w] for w in tgt]
+        return {"src": torch.LongTensor(src_ids), 
+                "tgt": torch.LongTensor(tgt_ids), 
+                "src_len": torch.LongTensor([src_length]),
+                "tgt_len": torch.LongTensor([tgt_length])}
 
 
 class DialogDataset(Dataset):
