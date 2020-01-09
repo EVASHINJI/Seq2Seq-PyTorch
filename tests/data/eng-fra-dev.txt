@@ -1,2 +1,0 @@
-entensorflow	frtensorflow
-enpytorch	frpytorch
