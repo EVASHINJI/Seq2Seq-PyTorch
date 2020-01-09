@@ -11,6 +11,8 @@ parser.add_argument('--skip_steps', action='store', dest='skip_steps',
                     help='Skip steps to train', default=0, type=int)
 parser.add_argument('--checkpoint_every', action='store', dest='checkpoint_every', 
                     help='Num batches to checkpoint', default=500, type=int)
+parser.add_argument('--print_every', action='store', dest='print_every', 
+                    help='Num batches to print', default=50, type=int)
 parser.add_argument('--embedding_size', action='store', dest='embedding_size', 
                     help='Size of embedding', default=100, type=int)
 parser.add_argument('--hidden_size', action='store', dest='hidden_size', 
@@ -43,8 +45,7 @@ parser.add_argument('--teacher_forcing_ratio', action='store', dest='teacher_for
 parser.add_argument('--train_path', action='store', dest='train_path', help='Path to train data')
 parser.add_argument('--dev_path', action='store', dest='dev_path', help='Path to dev data')
 parser.add_argument('--test_path', action='store', dest='test_path', help='Path to test data')
-parser.add_argument('--model_dir', action='store', dest='model_dir', default='./experiment', 
-                    help='Path to experiment directory.')
+
 parser.add_argument('--src_vocab_file', action='store', dest='src_vocab_file', 
                     help='Path to source vocab')
 parser.add_argument('--tgt_vocab_file', action='store', dest='tgt_vocab_file', 
@@ -56,11 +57,19 @@ parser.add_argument('--tgt_vocab_size', action='store', dest='tgt_vocab_size',
 
 parser.add_argument('--load_checkpoint', action='store', dest='load_checkpoint',
                     help='The file path of the checkpoint to load.')
+
+parser.add_argument('--model_dir', action='store', dest='model_dir', default='./experiment', 
+                    help='Path to model directory.')
+parser.add_argument('--best_model_dir', action='store', dest='best_model_dir', default='./experiment/best', 
+                    help='Path to best model directory.')
+parser.add_argument('--max_checkpoints_num', action='store', dest='max_checkpoints_num', default=5, 
+                    help='Max num of checkpoints', type=int)
+
 parser.add_argument('--resume', action='store_true', dest='resume', default=False,
                     help='Indicates if training has to be resumed from the latest checkpoint. If load_checkpoint is set, then train from loaded.')
-parser.add_argument('--log-level', action='store', dest='log_level', default='info', help='Logging level.')
+parser.add_argument('--log_level', action='store', dest='log_level', default='info', help='Logging level.')
 parser.add_argument('--log_file', action='store', dest='log_file', default='info', help='Logging file path.')
-parser.add_argument('--device', action='store', dest='device', default='info', help='GPU device.')
+parser.add_argument('--device', action='store', dest='device', default=None, help='GPU device.', type=int)
 parser.add_argument('--phase', action='store', dest='phase', default='train', help='train or infer')
 
 opt = parser.parse_args()

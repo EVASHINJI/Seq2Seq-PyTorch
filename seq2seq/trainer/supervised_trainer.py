@@ -1,6 +1,6 @@
 from __future__ import division
-import logging
 import os
+import logging
 import random
 import time
 
@@ -23,8 +23,19 @@ class SupervisedTrainer(object):
         batch_size (int, optional): batch size for experiment, (default: 64)
         checkpoint_every (int, optional): number of batches to checkpoint after, (default: 100)
     """
-    def __init__(self, model_dir='experiment', loss=NLLLoss(), batch_size=64, random_seed=None,
-                 checkpoint_every=100, print_every=100, max_epochs=5, max_steps=10000, device=None):
+    def __init__(self, 
+                 model_dir='experiment',
+                 best_model_dir='experiment/best',
+                 loss=NLLLoss(), 
+                 batch_size=64, 
+                 random_seed=None,
+                 checkpoint_every=100, 
+                 print_every=100, 
+                 max_epochs=5,
+                 max_steps=10000, 
+                 max_checkpoints_num=5, 
+                 best_ppl=100000.0,
+                 device=None):
         self._trainer = "Simple Trainer"
         self.random_seed = random_seed
         if random_seed is not None:
@@ -37,6 +48,8 @@ class SupervisedTrainer(object):
         self.max_steps = max_steps
         self.max_epochs = max_epochs
         self.batch_size = batch_size
+        self.best_ppl = best_ppl
+        self.max_checkpoints_num = max_checkpoints_num
         self.device = device
         self.evaluator = Evaluator(loss=self.loss, batch_size=batch_size, device=device)
 
@@ -45,8 +58,45 @@ class SupervisedTrainer(object):
         self.model_dir = model_dir
         if not os.path.exists(self.model_dir):
             os.makedirs(self.model_dir)
-        
+
+        if not os.path.isabs(best_model_dir):
+            best_model_dir = os.path.join(os.getcwd(), best_model_dir)
+        self.best_model_dir = best_model_dir
+        if not os.path.exists(self.best_model_dir):
+            os.makedirs(self.best_model_dir)
+
+        self.model_checkpoints = []
+        self.best_model_checkpoints = []
+
         self.logger = logging.getLogger(__name__)
+
+    def save_model(self, model, steps, dev_ppl=None):
+        model_fn = f"{steps}.pt"
+        model_fp = os.path.join(self.model_dir, model_fn)
+
+        # save model checkpoints
+        while len(self.model_checkpoints) >= self.max_checkpoints_num:
+            os.system(f"rm {self.model_checkpoints[0]}")
+            self.model_checkpoints = self.model_checkpoints[1:]
+        torch.save(model.state_dict(), model_fp)
+        self.model_checkpoints.append(model_fp)
+
+        # update checkpoints file
+        with open(os.path.join(self.model_dir, "checkpoints"), 'w') as f:
+            f.write('\n'.join(self.model_checkpoints[::-1]))
+
+        # save best model checkpoints
+        if dev_ppl and dev_ppl < self.best_ppl:
+            self.logger.info(f"Best model dev ppl {dev_ppl}.")
+            self.best_ppl = dev_ppl
+            while len(self.best_model_checkpoints) >= self.max_checkpoints_num:
+                os.system(f"rm {self.best_model_checkpoints[0]}")
+                self.best_model_checkpoints = self.best_model_checkpoints[1:]
+            
+            best_model_fp = os.path.join(self.best_model_dir, model_fn)
+            os.system(f"cp {model_fp} {best_model_fp}")
+            self.best_model_checkpoints.append(best_model_fp)
+
 
     def _train_batch(self, input_variable, input_lengths, target_variable, model, teacher_forcing_ratio):
         loss = self.loss
@@ -111,12 +161,17 @@ class SupervisedTrainer(object):
 
                 # Checkpoint
                 if step % self.checkpoint_every == 0:
-                    torch.save(model.state_dict(), os.path.join(self.model_dir, str(step)+'.pt'))
+                    dev_loss = None
+                    if dev_data is not None:
+                        dev_loss, accuracy = self.evaluator.evaluate(model, dev_data)
+                        log_msg = f"Dev {self.loss.name}: {dev_loss:.4f}, Accuracy: {accuracy:.4f}"
+                        log.info(log_msg)
+                        model.train(mode=True)
+                    self.save_model(model, step, dev_ppl=dev_loss)
                 
                 if step >= max_steps:
                     break
 
-            torch.save(model.state_dict(), os.path.join(self.model_dir, str(step)+'.pt'))
             if step >= max_steps:
                 log.info(f"Finish max steps {max_steps} at Epoch {epoch}.")
                 break
@@ -131,6 +186,7 @@ class SupervisedTrainer(object):
                 model.train(mode=True)
             else:
                 self.optimizer.update(epoch_loss_avg, epoch)
+            self.save_model(model, step, dev_ppl=dev_loss)
             log.info(log_msg)
             
             log.info(f"Finish Epoch {epoch}, Total steps {step}.")

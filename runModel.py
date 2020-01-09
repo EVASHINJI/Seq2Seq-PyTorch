@@ -23,7 +23,16 @@ LOG_FORMAT = '%(asctime)s %(name)-12s %(levelname)-8s %(message)s'
 logging.basicConfig(format=LOG_FORMAT, level=getattr(logging, opt.log_level.upper()))
 logging.info(opt)
 
-device = torch.device(f"cuda:{opt.device}" if opt.device.isdigit() else 'cpu')
+device = torch.device(f"cuda:{opt.device}" if opt.device else 'cpu')
+
+def get_last_checkpoint(model_dir):
+    checkpoints_fp = os.path.join(model_dir, "checkpoints")
+    try:
+        with open(checkpoints_fp, 'r') as f:
+            checkpoint = f.readline().strip()
+    except:
+        return None
+    return checkpoint
 
 if __name__ == "__main__":
     # Prepare Datasets and Vocab
@@ -82,13 +91,14 @@ if __name__ == "__main__":
     seq2seq.to(device)
 
     if opt.resume and not opt.load_checkpoint:
-        all_times = sorted(os.listdir(opt.model_dir), key=lambda x: -int(x.strip('.pt')))
-        if all_times:
-            opt.load_checkpoint = os.path.join(opt.model_dir, all_times[0])
-            opt.skip_steps = int(all_times[0].strip('.pt'))
+        last_checkpoint = get_last_checkpoint(opt.model_dir)
+        if last_checkpoint:
+            opt.load_checkpoint = os.path.join(opt.model_dir, last_checkpoint)
+            opt.skip_steps = int(last_checkpoint.strip('.pt').split('/')[-1])
 
     if opt.load_checkpoint:
         seq2seq.load_state_dict(torch.load(opt.load_checkpoint))
+        opt.skip_steps = int(opt.load_checkpoint.strip('.pt').split('/')[-1])
         print(f"\nLoad from {opt.load_checkpoint}\n")
     else:
         for param in seq2seq.parameters():
@@ -102,12 +112,15 @@ if __name__ == "__main__":
         # train
         optimizer = Optimizer(optim.Adam(seq2seq.parameters(), lr=opt.learning_rate), max_grad_norm=opt.clip_grad)
         t = SupervisedTrainer(loss=loss, 
+                              model_dir=opt.model_dir,
+                              best_model_dir=opt.best_model_dir,
                               batch_size=opt.batch_size,
+                              checkpoint_every=opt.checkpoint_every,
+                              print_every=opt.print_every,
                               max_epochs=opt.max_epochs,
                               max_steps=opt.max_steps,
-                              checkpoint_every=opt.checkpoint_every,
-                              print_every=opt.checkpoint_every, 
-                              model_dir=opt.model_dir, 
+                              max_checkpoints_num=opt.max_checkpoints_num,
+                              best_ppl=opt.best_ppl,
                               device=device)
 
         seq2seq = t.train(seq2seq, 
