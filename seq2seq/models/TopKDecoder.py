@@ -85,11 +85,11 @@ class TopKDecoder(torch.nn.Module):
         """
         Forward rnn for MAX_LENGTH steps.  Look at :func:`seq2seq.models.DecoderRNN.DecoderRNN.forward_rnn` for details.
         """
-
+        device = encoder_hidden.device if encoder_hidden is not None else None
         inputs, batch_size, max_length = self.rnn._validate_args(inputs, encoder_hidden, encoder_outputs,
                                                                  function, teacher_forcing_ratio)
 
-        self.pos_index = Variable(torch.LongTensor(range(batch_size)) * self.k).view(-1, 1)
+        self.pos_index = Variable(torch.LongTensor(range(batch_size)).to(device) * self.k).view(-1, 1)
 
         # Inflate the initial hidden states to be of size: b*k x h
         encoder_hidden = self.rnn._init_state(encoder_hidden)
@@ -109,13 +109,13 @@ class TopKDecoder(torch.nn.Module):
 
         # Initialize the scores; for the first step,
         # ignore the inflated copies to avoid duplicate entries in the top k
-        sequence_scores = torch.Tensor(batch_size * self.k, 1)
+        sequence_scores = torch.Tensor(batch_size * self.k, 1).to(device)
         sequence_scores.fill_(-float('Inf'))
-        sequence_scores.index_fill_(0, torch.LongTensor([i * self.k for i in range(0, batch_size)]), 0.0)
+        sequence_scores.index_fill_(0, torch.LongTensor([i * self.k for i in range(0, batch_size)]).to(device), 0.0)
         sequence_scores = Variable(sequence_scores)
 
         # Initialize the input vector
-        input_var = Variable(torch.transpose(torch.LongTensor([[self.SOS] * batch_size * self.k]), 0, 1))
+        input_var = Variable(torch.transpose(torch.LongTensor([[self.SOS] * batch_size * self.k]).to(device), 0, 1))
 
         # Store decisions for backtracking
         stored_outputs = list()
@@ -180,7 +180,7 @@ class TopKDecoder(torch.nn.Module):
         metadata['topk_length'] = l
         metadata['topk_sequence'] = p
         metadata['length'] = [seq_len[0] for seq_len in l]
-        metadata['sequence'] = [seq[0] for seq in p]
+        metadata['sequence'] = [seq[:, 0] for seq in p]
         return decoder_outputs, decoder_hidden, metadata
 
     def _backtrack(self, nw_output, nw_hidden, predecessors, symbols, scores, b, hidden_size):
@@ -212,6 +212,7 @@ class TopKDecoder(torch.nn.Module):
         """
 
         lstm = isinstance(nw_hidden[0], tuple)
+        device = nw_hidden[0].device
 
         # initialize return variables given different types
         output = list()
@@ -223,9 +224,9 @@ class TopKDecoder(torch.nn.Module):
         # the last hidden state of decoding.
         if lstm:
             state_size = nw_hidden[0][0].size()
-            h_n = tuple([torch.zeros(state_size), torch.zeros(state_size)])
+            h_n = tuple([torch.zeros(state_size).to(device), torch.zeros(state_size).to(device)])
         else:
-            h_n = torch.zeros(nw_hidden[0].size())
+            h_n = torch.zeros(nw_hidden[0].size()).to(device)
         l = [[self.rnn.max_length] * self.k for _ in range(b)]  # Placeholder for lengths of top-k sequences
                                                                 # Similar to `h_n`
 
@@ -238,7 +239,7 @@ class TopKDecoder(torch.nn.Module):
         batch_eos_found = [0] * b   # the number of EOS found
                                     # in the backward loop below for each batch
 
-        t = self.rnn.max_length - 1
+        t = len(nw_output) - 1
         # initialize the back pointer with the sorted order of the last step beams.
         # add self.pos_index for indexing variable with b*k as the first dimension.
         t_predecessors = (sorted_idx + self.pos_index.expand_as(sorted_idx)).view(b * self.k)
@@ -325,7 +326,7 @@ class TopKDecoder(torch.nn.Module):
             h_n = tuple([h.index_select(1, re_sorted_idx.data).view(-1, b, self.k, hidden_size) for h in h_n])
         else:
             h_t = [step.index_select(1, re_sorted_idx).view(-1, b, self.k, hidden_size) for step in reversed(h_t)]
-            h_n = h_n.index_select(1, re_sorted_idx.data).view(-1, b, self.k, hidden_size)
+            h_n = h_n.index_select(1, re_sorted_idx.data).view(-1, b, self.k, hidden_size).to(device)
         s = s.data
 
         return output, h_t, h_n, s, l, p

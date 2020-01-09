@@ -12,6 +12,8 @@ python runModel.py \
          --tgt_vocab_file $TGT_VOCAB \
          --batch_size 32 \
          --bidirectional \
-         --resume
-        #  --load_checkpoint $check \
-        #  --phase infer
+         --use_attn \
+         --resume \
+         --load_checkpoint $check \
+         --phase infer \
+         --beam_width 5 \

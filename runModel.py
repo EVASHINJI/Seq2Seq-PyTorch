@@ -6,7 +6,7 @@ from torch import optim
 from torch.utils.data.dataloader import DataLoader
 
 from seq2seq.trainer import SupervisedTrainer
-from seq2seq.models import EncoderRNN, DecoderRNN, Seq2seq
+from seq2seq.models import EncoderRNN, DecoderRNN, TopKDecoder,Seq2seq
 from seq2seq.loss import Perplexity
 from seq2seq.optim import Optimizer
 from seq2seq.dataset import VocabField
@@ -23,19 +23,9 @@ LOG_FORMAT = '%(asctime)s %(name)-12s %(levelname)-8s %(message)s'
 logging.basicConfig(format=LOG_FORMAT, level=getattr(logging, opt.log_level.upper()))
 logging.info(opt)
 
-device = torch.device('cuda:%s' % opt.device if opt.device.isdigit() else 'cpu')
+device = torch.device(f"cuda:{opt.device}" if opt.device.isdigit() else 'cpu')
 
 if __name__ == "__main__":
-    # if opt.load_checkpoint is not None:
-    #     logging.info("loading checkpoint from {}".format(os.path.join(opt.expt_dir, Checkpoint.CHECKPOINT_DIR_NAME, opt.load_checkpoint)))
-    #     checkpoint_path = os.path.join(opt.expt_dir, Checkpoint.CHECKPOINT_DIR_NAME, opt.load_checkpoint)
-    #     checkpoint = Checkpoint.load(checkpoint_path)
-    #     seq2seq = checkpoint.model
-    #     input_vocab = checkpoint.input_vocab
-    #     output_vocab = checkpoint.output_vocab
-        
-    # else:
-
     # Prepare Datasets and Vocab
     src_vocab_list = VocabField.load_vocab(opt.src_vocab_file)
     tgt_vocab_list = VocabField.load_vocab(opt.tgt_vocab_file)
@@ -88,22 +78,25 @@ if __name__ == "__main__":
                             bidirectional=opt.bidirectional,
                             eos_id=tgt_vocab.word2idx[tgt_vocab.eos_token], 
                             sos_id=tgt_vocab.word2idx[tgt_vocab.sos_token])
-    
     seq2seq = Seq2seq(encoder, decoder)
     seq2seq.to(device)
 
+    if opt.resume and not opt.load_checkpoint:
+        all_times = sorted(os.listdir(opt.model_dir), key=lambda x: -int(x.strip('.pt')))
+        if all_times:
+            opt.load_checkpoint = os.path.join(opt.model_dir, all_times[0])
+            opt.skip_steps = int(all_times[0].strip('.pt'))
+
     if opt.load_checkpoint:
         seq2seq.load_state_dict(torch.load(opt.load_checkpoint))
-        print(opt.load_checkpoint)
-    elif opt.resume or opt.phase == "infer":
-        all_times = sorted(os.listdir(opt.model_dir), key=lambda x: -int(x.strip('.pt')))
-        last_checkpoint = os.path.join(opt.model_dir, all_times[0])
-        seq2seq.load_state_dict(torch.load(last_checkpoint))
-        opt.skip_steps = int(all_times[0].strip('.pt'))
-        print(f"Resume from last checkpoint {last_checkpoint}")
+        print(f"\nLoad from {opt.load_checkpoint}\n")
     else:
         for param in seq2seq.parameters():
             param.data.uniform_(-opt.init_weight, opt.init_weight)
+    
+    if opt.beam_width > 1 and opt.phase == "infer":
+        print(f"Beam Width {opt.beam_width}")
+        seq2seq.decoder = TopKDecoder(seq2seq.decoder, opt.beam_width)
 
     if opt.phase == "train":
         # train
@@ -126,11 +119,11 @@ if __name__ == "__main__":
 
     elif opt.phase == "infer":
         # Predict
-        predictor = Predictor(seq2seq, src_vocab.word2idx, tgt_vocab.idx2word)
+        predictor = Predictor(seq2seq, src_vocab.word2idx, tgt_vocab.idx2word, device)
 
         while True:
             seq_str = input("Type in a source sequence:")
             seq = seq_str.strip().split()
-            ans = predictor.predict(seq)
+            ans = predictor.predict_n(seq, n=opt.beam_width) \
+                if opt.beam_width > 1 else predictor.predict(seq)
             print(ans)
-            print(len(ans))

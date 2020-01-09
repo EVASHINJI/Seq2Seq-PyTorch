@@ -4,7 +4,7 @@ from torch.autograd import Variable
 
 class Predictor(object):
 
-    def __init__(self, model, src_vocab, tgt_vocab):
+    def __init__(self, model, src_vocab, tgt_vocab, device):
         """
         Predictor class to evaluate for a given model.
         Args:
@@ -13,19 +13,15 @@ class Predictor(object):
             src_vocab (seq2seq.dataset.vocabulary.Vocabulary): source sequence vocabulary
             tgt_vocab (seq2seq.dataset.vocabulary.Vocabulary): target sequence vocabulary
         """
-        if torch.cuda.is_available():
-            self.model = model.cuda()
-        else:
-            self.model = model.cpu()
+        self.model = model
+        self.device = device
         self.model.eval()
         self.src_vocab = src_vocab
         self.tgt_vocab = tgt_vocab
 
     def get_decoder_features(self, src_seq):
-        src_id_seq = torch.LongTensor([self.src_vocab[tok] for tok in src_seq]).view(1, -1)
-        if torch.cuda.is_available():
-            src_id_seq = src_id_seq.cuda()
-
+        src_id_seq = torch.LongTensor([self.src_vocab[tok] for tok in src_seq]).view(1, -1).to(self.device)
+    
         with torch.no_grad():
             softmax_list, _, other = self.model(src_id_seq, [len(src_seq)])
 
@@ -64,10 +60,10 @@ class Predictor(object):
         other = self.get_decoder_features(src_seq)
 
         result = []
-        for x in range(0, int(n)):
+        for x in range(0, n):
             length = other['topk_length'][0][x]
-            tgt_id_seq = [other['topk_sequence'][di][0, x, 0].data[0] for di in range(length)]
-            tgt_seq = [self.tgt_vocab[tok] for tok in tgt_id_seq.tolist()]
+            tgt_id_seq = [other['topk_sequence'][di][0][x].data[0] for di in range(length)]
+            tgt_seq = [self.tgt_vocab[tok.tolist()] for tok in tgt_id_seq]
             result.append(tgt_seq)
 
         return result

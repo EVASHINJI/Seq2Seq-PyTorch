@@ -20,7 +20,7 @@ parser.add_argument('--bidirectional', action='store_true', dest='bidirectional'
 parser.add_argument('--batch_size', action='store', dest='batch_size', 
                     help='Size of batch', default=32, type=int)
 parser.add_argument('--beam_width', action='store', dest='beam_width', 
-                    help='Beam width when using beam search decoder.', default=5, type=int)
+                    help='Beam width when using beam search decoder.', default=1, type=int)
 parser.add_argument('--init_weight', action='store', dest='init_weight', 
                     help='Initial weights from [-this, this]', default=0.08, type=float)
 parser.add_argument('--clip_grad', action='store', dest='clip_grad', 
@@ -30,7 +30,7 @@ parser.add_argument('--learning_rate', action='store', dest='learning_rate',
 parser.add_argument('--best_ppl', dest='best_ppl', 
                     help='best ppl to save model.', default=100000.0, type=float)
 parser.add_argument('--use_attn', action='store_true', dest='use_attn', 
-                    help='If use attention', default=True)
+                    help='If use attention', default=False)
 parser.add_argument('--max_src_length', action='store', dest='max_src_length', 
                     help='max length of source', default=50, type=int)
 parser.add_argument('--max_tgt_length', action='store', dest='max_tgt_length', 
