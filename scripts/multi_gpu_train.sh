@@ -1,5 +1,5 @@
-DEVICES="1,2,3,4"
-DEVICES_NUM=4
+DEVICES="0,1"
+DEVICES_NUM=2
 
 TRAIN_PATH=data/fra2eng/fra_eng.pairs
 DEV_PATH=data/fra2eng/fra_eng.dev

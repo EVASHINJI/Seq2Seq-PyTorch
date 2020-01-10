@@ -16,7 +16,7 @@ from seq2seq.evaluator import Predictor
 
 from configParser import opt
 
-if opt.random_seed is not None: torch.manual_seed_all(random_seed)
+if opt.random_seed is not None: torch.cuda.manual_seed_all(opt.random_seed)
 LOG_FORMAT = '%(asctime)s %(name)-12s %(levelname)-8s %(message)s'
 logging.basicConfig(format=LOG_FORMAT, level=getattr(logging, opt.log_level.upper()))
 logging.info(opt)
@@ -130,7 +130,7 @@ if __name__ == "__main__":
         optimizer = optim.Adam(seq2seq.parameters(), lr=opt.learning_rate)
         if multi_gpu: 
             optimizer = hvd.DistributedOptimizer(optimizer, named_parameters=seq2seq.named_parameters())
-            hvd.broadcast_optimizer_state(optimizer.optimizer, root_rank=0)
+            hvd.broadcast_optimizer_state(optimizer, root_rank=0)
             hvd.broadcast_parameters(seq2seq.state_dict(), root_rank=0)
 
         optimizer = Optimizer(optimizer, max_grad_norm=opt.clip_grad)
