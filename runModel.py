@@ -52,8 +52,9 @@ if __name__ == "__main__":
                               tgt_vocab,
                               max_src_length=opt.max_src_length,
                               max_tgt_length=opt.max_tgt_length)
-    train_sampler = dist.DistributedSampler(train_set, 
-                                        num_replicas=hvd.size(), rank=hvd.rank())
+    train_sampler = dist.DistributedSampler(train_set,
+                                            num_replicas=hvd.size(), 
+                                            rank=hvd.rank())
     train = DataLoader(train_set, 
                        batch_size=opt.batch_size, 
                        shuffle=False, 
@@ -68,7 +69,8 @@ if __name__ == "__main__":
                             max_src_length=opt.max_src_length,
                             max_tgt_length=opt.max_tgt_length)
     dev_sampler = dist.DistributedSampler(dev_set, 
-                                        num_replicas=hvd.size(), rank=hvd.rank())
+                                          num_replicas=hvd.size(), 
+                                          rank=hvd.rank())
     dev = DataLoader(dev_set, 
                      batch_size=opt.batch_size, 
                      shuffle=False, 
@@ -81,20 +83,24 @@ if __name__ == "__main__":
     loss.to(device)
 
     # Initialize model
-    encoder = EncoderRNN(len(src_vocab.vocab), 
-                            opt.max_src_length, 
-                            hidden_size=opt.hidden_size,
-                            bidirectional=opt.bidirectional, 
-                            variable_lengths=False)
+    encoder = EncoderRNN(len(src_vocab.vocab),
+                         opt.max_src_length,
+                         rnn_cell=opt.rnn_cell,
+                         n_layers=opt.n_hidden_layer,
+                         hidden_size=opt.hidden_size,
+                         bidirectional=opt.bidirectional, 
+                         variable_lengths=False)
 
-    decoder = DecoderRNN(len(tgt_vocab.vocab), 
-                            opt.max_tgt_length, 
-                            hidden_size=opt.hidden_size * 2 if opt.bidirectional else opt.hidden_size,
-                            dropout_p=0.2, 
-                            use_attention=opt.use_attn, 
-                            bidirectional=opt.bidirectional,
-                            eos_id=tgt_vocab.word2idx[tgt_vocab.eos_token], 
-                            sos_id=tgt_vocab.word2idx[tgt_vocab.sos_token])
+    decoder = DecoderRNN(len(tgt_vocab.vocab),
+                         opt.max_tgt_length,
+                         rnn_cell=opt.rnn_cell,
+                         n_layers=opt.n_hidden_layer,
+                         hidden_size=opt.hidden_size * 2 if opt.bidirectional else opt.hidden_size,
+                         bidirectional=opt.bidirectional,
+                         dropout_p=0.2,
+                         use_attention=opt.use_attn, 
+                         eos_id=tgt_vocab.word2idx[tgt_vocab.eos_token], 
+                         sos_id=tgt_vocab.word2idx[tgt_vocab.sos_token])
     seq2seq = Seq2seq(encoder, decoder)
     seq2seq.to(device)
 
