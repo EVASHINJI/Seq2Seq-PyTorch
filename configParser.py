@@ -69,7 +69,7 @@ parser.add_argument('--resume', action='store_true', dest='resume', default=Fals
                     help='Indicates if training has to be resumed from the latest checkpoint. If load_checkpoint is set, then train from loaded.')
 parser.add_argument('--log_level', action='store', dest='log_level', default='info', help='Logging level.')
 parser.add_argument('--log_file', action='store', dest='log_file', default='info', help='Logging file path.')
-parser.add_argument('--device', action='store', dest='device', default=None, help='GPU device.', type=int)
+parser.add_argument('--device', action='store', dest='device', default=None, help='GPU device.', type=str)
 parser.add_argument('--phase', action='store', dest='phase', default='train', help='train or infer')
 
 opt = parser.parse_args()

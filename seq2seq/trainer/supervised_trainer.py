@@ -3,7 +3,7 @@ import os
 import logging
 import random
 import time
-
+import horovod.torch as hvd
 import torch
 from torch import optim
 
@@ -157,7 +157,8 @@ class SupervisedTrainer(object):
                     print_loss_avg = print_loss_total / self.print_every
                     print_loss_total = 0
                     log_msg = f"Process {100.0*(step%steps_per_epoch)/steps_per_epoch:.2f}% of Epoch {epoch}, Total step {step}, Train {self.loss.name} {print_loss_avg:.4f}" 
-                    log.info(log_msg)
+                    if hvd.rank() == 0:
+                        log.info(log_msg)
 
                 # Checkpoint
                 if step % self.checkpoint_every == 0:
@@ -165,15 +166,18 @@ class SupervisedTrainer(object):
                     if dev_data is not None:
                         dev_loss, accuracy = self.evaluator.evaluate(model, dev_data)
                         log_msg = f"Dev {self.loss.name}: {dev_loss:.4f}, Accuracy: {accuracy:.4f}"
-                        log.info(log_msg)
+                        if hvd.rank() == 0:
+                            log.info(log_msg)
                         model.train(mode=True)
-                    self.save_model(model, step, dev_ppl=dev_loss)
+                    if hvd.rank() == 0:
+                        self.save_model(model, step, dev_ppl=dev_loss)
                 
                 if step >= max_steps:
                     break
 
             if step >= max_steps:
-                log.info(f"Finish max steps {max_steps} at Epoch {epoch}.")
+                if hvd.rank() == 0:
+                    log.info(f"Finish max steps {max_steps} at Epoch {epoch}.")
                 break
 
             epoch_loss_avg = epoch_loss_total / min(steps_per_epoch, step - start_step)
@@ -186,10 +190,10 @@ class SupervisedTrainer(object):
                 model.train(mode=True)
             else:
                 self.optimizer.update(epoch_loss_avg, epoch)
-            self.save_model(model, step, dev_ppl=dev_loss)
-            log.info(log_msg)
-            
-            log.info(f"Finish Epoch {epoch}, Total steps {step}.")
+            if hvd.rank() == 0:
+                self.save_model(model, step, dev_ppl=dev_loss)
+                log.info(log_msg)
+                log.info(f"Finish Epoch {epoch}, Total steps {step}.")
 
     def train(self, model, data, start_step=0, dev_data=None, optimizer=None, teacher_forcing_ratio=0):
         """ Run training for a given model.
