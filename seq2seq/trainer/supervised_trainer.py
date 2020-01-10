@@ -35,7 +35,8 @@ class SupervisedTrainer(object):
                  max_steps=10000, 
                  max_checkpoints_num=5, 
                  best_ppl=100000.0,
-                 device=None):
+                 device=None,
+                 multi_gpu=False):
         self._trainer = "Simple Trainer"
         self.random_seed = random_seed
         if random_seed is not None:
@@ -51,19 +52,20 @@ class SupervisedTrainer(object):
         self.best_ppl = best_ppl
         self.max_checkpoints_num = max_checkpoints_num
         self.device = device
+        self.multi_gpu = multi_gpu
         self.evaluator = Evaluator(loss=self.loss, batch_size=batch_size, device=device)
 
         if not os.path.isabs(model_dir):
             model_dir = os.path.join(os.getcwd(), model_dir)
         self.model_dir = model_dir
-        if not os.path.exists(self.model_dir):
-            os.makedirs(self.model_dir)
-
+        
         if not os.path.isabs(best_model_dir):
             best_model_dir = os.path.join(os.getcwd(), best_model_dir)
         self.best_model_dir = best_model_dir
-        if not os.path.exists(self.best_model_dir):
-            os.makedirs(self.best_model_dir)
+
+        if not multi_gpu or hvd.rank() == 0:
+            if not os.path.exists(self.best_model_dir): os.makedirs(self.best_model_dir)
+            if not os.path.exists(self.model_dir): os.makedirs(self.model_dir)
 
         self.model_checkpoints = []
         self.best_model_checkpoints = []
@@ -121,6 +123,7 @@ class SupervisedTrainer(object):
         log = self.logger
         max_epochs = self.max_epochs
         max_steps = self.max_steps
+        multi_gpu = self.multi_gpu
 
         print_loss_total = 0  # Reset every print_every
         epoch_loss_total = 0  # Reset every epoch
@@ -157,7 +160,7 @@ class SupervisedTrainer(object):
                     print_loss_avg = print_loss_total / self.print_every
                     print_loss_total = 0
                     log_msg = f"Process {100.0*(step%steps_per_epoch)/steps_per_epoch:.2f}% of Epoch {epoch}, Total step {step}, Train {self.loss.name} {print_loss_avg:.4f}" 
-                    if hvd.rank() == 0:
+                    if not multi_gpu or hvd.rank() == 0:
                         log.info(log_msg)
 
                 # Checkpoint
@@ -166,17 +169,17 @@ class SupervisedTrainer(object):
                     if dev_data is not None:
                         dev_loss, accuracy = self.evaluator.evaluate(model, dev_data)
                         log_msg = f"Dev {self.loss.name}: {dev_loss:.4f}, Accuracy: {accuracy:.4f}"
-                        if hvd.rank() == 0:
+                        if not multi_gpu or hvd.rank() == 0:
                             log.info(log_msg)
                         model.train(mode=True)
-                    if hvd.rank() == 0:
+                    if not multi_gpu or hvd.rank() == 0:
                         self.save_model(model, step, dev_ppl=dev_loss)
                 
                 if step >= max_steps:
                     break
 
             if step >= max_steps:
-                if hvd.rank() == 0:
+                if not multi_gpu or hvd.rank() == 0:
                     log.info(f"Finish max steps {max_steps} at Epoch {epoch}.")
                 break
 
@@ -190,7 +193,7 @@ class SupervisedTrainer(object):
                 model.train(mode=True)
             else:
                 self.optimizer.update(epoch_loss_avg, epoch)
-            if hvd.rank() == 0:
+            if not multi_gpu or hvd.rank() == 0:
                 self.save_model(model, step, dev_ppl=dev_loss)
                 log.info(log_msg)
                 log.info(f"Finish Epoch {epoch}, Total steps {step}.")
