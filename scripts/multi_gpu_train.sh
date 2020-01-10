@@ -15,7 +15,7 @@ CUDA_VISIBLE_DEVICES=$DEVICES horovodrun -np $DEVICES_NUM -H localhost:$DEVICES_
          --tgt_vocab_file $TGT_VOCAB \
          --bidirectional \
          --use_attn
-        #  --resume  \
+         --resume  \
         #  --load_checkpoint $check \
         # --phase infer \
         # --beam_width 5 

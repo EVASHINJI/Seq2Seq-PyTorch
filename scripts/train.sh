@@ -5,7 +5,7 @@ DEV_PATH=data/fra2eng/fra_eng.dev
 SRC_VOCAB=data/fra2eng/src_vocab_file
 TGT_VOCAB=data/fra2eng/tgt_vocab_file
 
-# Start inference
+# Start training
 python runModel.py \
          --device $DEVICES \
          --train_path $TRAIN_PATH \

@@ -80,6 +80,7 @@ parser.add_argument('--teacher_forcing_ratio', action='store', dest='teacher_for
 
 
 # Others
+parser.add_argument('--random_seed', action='store', dest='random_seed', default=None, help='Dandom seed. //随机种子。', type=int)
 parser.add_argument('--device', action='store', dest='device', default=None, help='GPU device. //使用的GPU编号。')
 parser.add_argument('--phase', action='store', dest='phase', default='train', help='train or infer. //训练或预测。')
 parser.add_argument('--beam_width', action='store', dest='beam_width', 

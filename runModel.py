@@ -16,7 +16,7 @@ from seq2seq.evaluator import Predictor
 
 from configParser import opt
 
-
+if opt.random_seed is not None: torch.manual_seed_all(random_seed)
 LOG_FORMAT = '%(asctime)s %(name)-12s %(levelname)-8s %(message)s'
 logging.basicConfig(format=LOG_FORMAT, level=getattr(logging, opt.log_level.upper()))
 logging.info(opt)

@@ -28,7 +28,6 @@ class SupervisedTrainer(object):
                  best_model_dir='experiment/best',
                  loss=NLLLoss(), 
                  batch_size=64, 
-                 random_seed=None,
                  checkpoint_every=100, 
                  print_every=100, 
                  max_epochs=5,
@@ -38,10 +37,6 @@ class SupervisedTrainer(object):
                  device=None,
                  multi_gpu=False):
         self._trainer = "Simple Trainer"
-        self.random_seed = random_seed
-        if random_seed is not None:
-            random.seed(random_seed)
-            torch.manual_seed(random_seed)
         self.loss = loss
         self.optimizer = None
         self.checkpoint_every = checkpoint_every
