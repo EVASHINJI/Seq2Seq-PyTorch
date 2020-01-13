@@ -29,6 +29,7 @@ else:
     hvd.init()
     device = torch.device(f"cuda" if opt.device else 'cpu')
     torch.cuda.set_device(hvd.local_rank())
+    opt.batch_size = opt.batch_size // hvd.size()
 
 def get_last_checkpoint(model_dir):
     checkpoints_fp = os.path.join(model_dir, "checkpoints")
@@ -46,38 +47,7 @@ if __name__ == "__main__":
     src_vocab = VocabField(src_vocab_list, vocab_size=opt.src_vocab_size)
     tgt_vocab = VocabField(tgt_vocab_list, vocab_size=opt.tgt_vocab_size, 
                             sos_token="<SOS>", eos_token="<EOS>")
-    
-    if opt.phase == "train":
-        pad_id = tgt_vocab.word2idx[tgt_vocab.pad_token]
-        trans_data = TranslateData(pad_id)
-        train_set = DialogDataset(opt.train_path,
-                                trans_data.translate_data,
-                                src_vocab,
-                                tgt_vocab,
-                                max_src_length=opt.max_src_length,
-                                max_tgt_length=opt.max_tgt_length)
-        train_sampler = dist.DistributedSampler(train_set, num_replicas=hvd.size(), rank=hvd.rank()) \
-                            if multi_gpu else None 
-        train = DataLoader(train_set, 
-                        batch_size=opt.batch_size, 
-                        shuffle=False, 
-                        sampler=train_sampler,
-                        drop_last=True,
-                        collate_fn=trans_data.collate_fn)
-
-        dev_set = DialogDataset(opt.dev_path,
-                                trans_data.translate_data,
-                                src_vocab,
-                                tgt_vocab,
-                                max_src_length=opt.max_src_length,
-                                max_tgt_length=opt.max_tgt_length)
-        dev_sampler = dist.DistributedSampler(dev_set, num_replicas=hvd.size(), rank=hvd.rank()) \
-                            if multi_gpu else None 
-        dev = DataLoader(dev_set, 
-                        batch_size=opt.batch_size, 
-                        shuffle=False, 
-                        sampler=dev_sampler, 
-                        collate_fn=trans_data.collate_fn)
+    pad_id = tgt_vocab.word2idx[tgt_vocab.pad_token]
 
     # Prepare loss
     weight = torch.ones(len(tgt_vocab.vocab))
@@ -125,15 +95,47 @@ if __name__ == "__main__":
         seq2seq.decoder = TopKDecoder(seq2seq.decoder, opt.beam_width)
 
     if opt.phase == "train":
-        # train
+        # Prepare Train Data
+        trans_data = TranslateData(pad_id)
+        train_set = DialogDataset(opt.train_path,
+                                  trans_data.translate_data,
+                                  src_vocab,
+                                  tgt_vocab,
+                                  max_src_length=opt.max_src_length,
+                                  max_tgt_length=opt.max_tgt_length)
+        train_sampler = dist.DistributedSampler(train_set, num_replicas=hvd.size(), rank=hvd.rank()) \
+                            if multi_gpu else None
+        train = DataLoader(train_set, 
+                           batch_size=opt.batch_size, 
+                           shuffle=False if multi_gpu else True,
+                           sampler=train_sampler,
+                           drop_last=True,
+                           collate_fn=trans_data.collate_fn)
+
+        dev_set = DialogDataset(opt.dev_path,
+                                trans_data.translate_data,
+                                src_vocab,
+                                tgt_vocab,
+                                max_src_length=opt.max_src_length,
+                                max_tgt_length=opt.max_tgt_length)
+        dev_sampler = dist.DistributedSampler(dev_set, num_replicas=hvd.size(), rank=hvd.rank()) \
+                            if multi_gpu else None
+        dev = DataLoader(dev_set, 
+                        batch_size=opt.batch_size, 
+                        shuffle=False, 
+                        sampler=dev_sampler, 
+                        collate_fn=trans_data.collate_fn)
+
+        # Prepare optimizer
         # optimizer = Optimizer(optim.Adam(seq2seq.parameters(), lr=opt.learning_rate), max_grad_norm=opt.clip_grad)
         optimizer = optim.Adam(seq2seq.parameters(), lr=opt.learning_rate)
         if multi_gpu: 
             optimizer = hvd.DistributedOptimizer(optimizer, named_parameters=seq2seq.named_parameters())
             hvd.broadcast_optimizer_state(optimizer, root_rank=0)
             hvd.broadcast_parameters(seq2seq.state_dict(), root_rank=0)
-
         optimizer = Optimizer(optimizer, max_grad_norm=opt.clip_grad)
+
+        # Prepare trainer and train
         t = SupervisedTrainer(loss=loss, 
                               model_dir=opt.model_dir,
                               best_model_dir=opt.best_model_dir,

@@ -1,7 +1,6 @@
 from __future__ import print_function, division
 
 import torch
-import torchtext
 
 import seq2seq
 from seq2seq.loss import NLLLoss
