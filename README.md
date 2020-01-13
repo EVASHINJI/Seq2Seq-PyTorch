@@ -1,16 +1,17 @@
 # Seq2Seq-PyTorch
 
 基于[IBM/pytorch-seq2seq](https://github.com/IBM/pytorch-seq2seq)进行简化与拓展，在[PyTorch](http://pytorch.org/) 1.3.1上实现的Sequence-to-Sequence (Seq2Seq)模型。支持Attention机制，Beam Search，多卡训练等。
+
 This is a framework for Sequence-to-Sequence (Seq2Seq) models implemented in [PyTorch](http://pytorch.org/) 1.3.1. And this is simplified and expanded on the basis of [IBM/pytorch-seq2seq](https://github.com/IBM/pytorch-seq2seq), implemented Attention mechanism, Beam Search, Multi-GPU training, etc.
 
 
 
 ### 依赖包 / Requirements
 运行程序所需依赖包建议版本。
+
 In order to run the program, here are a list of packages with the suggested versions.
 
 ```
-* suggested versions of requirements
 - python   3.6
 - pytorch  1.3.1
 - horovod  0.18.2
@@ -22,6 +23,7 @@ In order to run the program, here are a list of packages with the suggested vers
 
 ### 数据 / Dataset
 PyTorch官网Seq2Seq教程中的英法翻译数据。已转换为所需格式放至“data/fra2eng”目录。原始数据。
+
 English-French translation data in the PyTorch official Seq2Seq tutorial. It has been converted into the required format in “data/fra2eng” directory. Raw data.
 
 

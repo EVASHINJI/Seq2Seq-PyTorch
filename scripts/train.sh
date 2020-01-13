@@ -1,4 +1,4 @@
-DEVICES="cpu"
+DEVICES="0"
 
 TRAIN_PATH=data/fra2eng/fra_eng.pairs
 DEV_PATH=data/fra2eng/fra_eng.dev
