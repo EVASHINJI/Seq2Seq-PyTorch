@@ -65,7 +65,7 @@ parser.add_argument('--rnn_cell', action='store', dest='rnn_cell',
 parser.add_argument('--n_hidden_layer', action='store', dest='n_hidden_layer', 
                     help='Num of hidden layer in each RNN. //RNN的隐藏层数。', default=1, type=int)
 parser.add_argument('--hidden_size', action='store', dest='hidden_size', 
-                    help='Size of each RNN hidden layer. //RNN的隐藏层维度。', default=128, type=int)
+                    help='Size of each RNN hidden layer. //RNN的隐藏层维度。', default=1024, type=int)
 parser.add_argument('--bidirectional', action='store_true', dest='bidirectional', 
                     help='If use bidirectional RNN. //是否使用双向RNN。', default=False)
 parser.add_argument('--max_src_length', action='store', dest='max_src_length', 

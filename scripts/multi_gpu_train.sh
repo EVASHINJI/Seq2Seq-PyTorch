@@ -17,5 +17,5 @@ CUDA_VISIBLE_DEVICES=$DEVICES horovodrun -np $DEVICES_NUM -H localhost:$DEVICES_
         --use_attn \
         --random_seed 2808 \
         --model_dir experiment/4_gpu \
-        --best_model_dir experiment/4_gpu/best \
+        --best_model_dir experiment/multi_gpu/best \
         --resume

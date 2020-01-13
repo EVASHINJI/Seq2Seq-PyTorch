@@ -57,6 +57,7 @@ if __name__ == "__main__":
     # Initialize model
     encoder = EncoderRNN(len(src_vocab.vocab),
                          opt.max_src_length,
+                         embedding_size=opt.embedding_size,
                          rnn_cell=opt.rnn_cell,
                          n_layers=opt.n_hidden_layer,
                          hidden_size=opt.hidden_size,
@@ -65,6 +66,7 @@ if __name__ == "__main__":
 
     decoder = DecoderRNN(len(tgt_vocab.vocab),
                          opt.max_tgt_length,
+                         embedding_size=opt.embedding_size,
                          rnn_cell=opt.rnn_cell,
                          n_layers=opt.n_hidden_layer,
                          hidden_size=opt.hidden_size * 2 if opt.bidirectional else opt.hidden_size,
