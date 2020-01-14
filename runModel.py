@@ -17,9 +17,6 @@ from seq2seq.evaluator import Predictor
 from configParser import opt
 
 if opt.random_seed is not None: torch.cuda.manual_seed_all(opt.random_seed)
-LOG_FORMAT = '%(asctime)s %(name)-12s %(levelname)-8s %(message)s'
-logging.basicConfig(format=LOG_FORMAT, level=getattr(logging, opt.log_level.upper()))
-logging.info(opt)
 
 multi_gpu = False
 if opt.device == 'cpu' or opt.device.isdigit():
@@ -29,7 +26,21 @@ else:
     hvd.init()
     device = torch.device(f"cuda" if opt.device else 'cpu')
     torch.cuda.set_device(hvd.local_rank())
-    opt.batch_size = opt.batch_size // hvd.size()
+    opt.batch_size = opt.batch_size
+
+LOG_FORMAT = '%(asctime)s %(levelname)-8s %(message)s'
+if opt.phase == 'train':
+    logging.basicConfig(format=LOG_FORMAT, 
+                        level=getattr(logging, opt.log_level.upper()),
+                        filename=os.path.join(opt.model_dir, opt.log_file),
+                        filemode='a' if opt.resume else 'w')
+else:
+    logging.basicConfig(format=LOG_FORMAT, 
+                        level=getattr(logging, opt.log_level.upper()))
+logger = logging.getLogger('train')
+if not multi_gpu or hvd.rank() == 0: 
+    logger.info(f"Train Log")
+    logger.info(opt)
 
 def get_last_checkpoint(model_dir):
     checkpoints_fp = os.path.join(model_dir, "checkpoints")
@@ -87,13 +98,13 @@ if __name__ == "__main__":
     if opt.load_checkpoint:
         seq2seq.load_state_dict(torch.load(opt.load_checkpoint))
         opt.skip_steps = int(opt.load_checkpoint.strip('.pt').split('/')[-1])
-        print(f"\nLoad from {opt.load_checkpoint}\n")
+        if not multi_gpu or hvd.rank() == 0: logger.info(f"\nLoad from {opt.load_checkpoint}\n")
     else:
         for param in seq2seq.parameters():
             param.data.uniform_(-opt.init_weight, opt.init_weight)
     
     if opt.beam_width > 1 and opt.phase == "infer":
-        print(f"Beam Width {opt.beam_width}")
+        if not multi_gpu or hvd.rank() == 0: logger.info(f"Beam Width {opt.beam_width}")
         seq2seq.decoder = TopKDecoder(seq2seq.decoder, opt.beam_width)
 
     if opt.phase == "train":
@@ -136,6 +147,8 @@ if __name__ == "__main__":
             hvd.broadcast_optimizer_state(optimizer, root_rank=0)
             hvd.broadcast_parameters(seq2seq.state_dict(), root_rank=0)
         optimizer = Optimizer(optimizer, max_grad_norm=opt.clip_grad)
+        if opt.decay_factor:
+            optimizer.set_scheduler(torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer.optimizer, 'min', factor=opt.decay_factor, patience=1))
 
         # Prepare trainer and train
         t = SupervisedTrainer(loss=loss, 
@@ -149,7 +162,8 @@ if __name__ == "__main__":
                               max_checkpoints_num=opt.max_checkpoints_num,
                               best_ppl=opt.best_ppl,
                               device=device,
-                              multi_gpu=multi_gpu)
+                              multi_gpu=multi_gpu,
+                              logger=logger)
 
         seq2seq = t.train(seq2seq, 
                           data=train,

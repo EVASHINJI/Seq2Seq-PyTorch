@@ -1,4 +1,4 @@
-DEVICES="0"
+DEVICES="6"
 
 TRAIN_PATH=data/fra2eng/fra_eng.pairs
 DEV_PATH=data/fra2eng/fra_eng.dev
@@ -15,4 +15,4 @@ python runModel.py \
         --bidirectional \
         --use_attn \
         --random_seed 2808 \
-        --resume
+        # --resume

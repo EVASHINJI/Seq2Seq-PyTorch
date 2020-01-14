@@ -35,7 +35,8 @@ class SupervisedTrainer(object):
                  max_checkpoints_num=5, 
                  best_ppl=100000.0,
                  device=None,
-                 multi_gpu=False):
+                 multi_gpu=False,
+                 logger=None):
         self._trainer = "Simple Trainer"
         self.loss = loss
         self.optimizer = None
@@ -65,7 +66,7 @@ class SupervisedTrainer(object):
         self.model_checkpoints = []
         self.best_model_checkpoints = []
 
-        self.logger = logging.getLogger(__name__)
+        self.logger = logger if logger is not None else logging.getLogger(__name__)
 
     def save_model(self, model, steps, dev_ppl=None):
         model_fn = f"{steps}.pt"
@@ -82,8 +83,9 @@ class SupervisedTrainer(object):
         with open(os.path.join(self.model_dir, "checkpoints"), 'w') as f:
             f.write('\n'.join(self.model_checkpoints[::-1]))
 
+        if not dev_ppl: return None
         # save best model checkpoints
-        if dev_ppl and dev_ppl < self.best_ppl:
+        if dev_ppl < self.best_ppl:
             self.logger.info(f"Best model dev ppl {dev_ppl}.")
             self.best_ppl = dev_ppl
             while len(self.best_model_checkpoints) >= self.max_checkpoints_num:
@@ -93,6 +95,8 @@ class SupervisedTrainer(object):
             best_model_fp = os.path.join(self.best_model_dir, model_fn)
             os.system(f"cp {model_fp} {best_model_fp}")
             self.best_model_checkpoints.append(best_model_fp)
+        else:
+            self.logger.info(f"Current learning rate: {self.optimizer.optimizer.param_groups[0]['lr']}")
 
 
     def _train_batch(self, input_variable, input_lengths, target_variable, model, teacher_forcing_ratio):
@@ -131,7 +135,7 @@ class SupervisedTrainer(object):
             if step >= start_step: break
             step += 1
         if start_epoch or start_step:
-            logging.info(f"Resume from Epoch {start_epoch}, Step {start_step}")
+            if not multi_gpu or hvd.rank() == 0: log.info(f"Resume from Epoch {start_epoch}, Step {start_step}")
 
         for epoch in range(start_epoch, max_epochs):
             model.train(True)
@@ -163,13 +167,14 @@ class SupervisedTrainer(object):
                     dev_loss = None
                     if dev_data is not None:
                         dev_loss, accuracy = self.evaluator.evaluate(model, dev_data)
+                        self.optimizer.update(dev_loss, epoch)
                         log_msg = f"Dev {self.loss.name}: {dev_loss:.4f}, Accuracy: {accuracy:.4f}"
                         if not multi_gpu or hvd.rank() == 0:
                             log.info(log_msg)
                         model.train(mode=True)
                     if not multi_gpu or hvd.rank() == 0:
                         self.save_model(model, step, dev_ppl=dev_loss)
-                
+
                 if step >= max_steps:
                     break
 
@@ -214,7 +219,8 @@ class SupervisedTrainer(object):
             optimizer = Optimizer(optim.Adam(model.parameters()), max_grad_norm=5)
         self.optimizer = optimizer
 
-        self.logger.info("Optimizer: %s, Scheduler: %s" % (self.optimizer.optimizer, self.optimizer.scheduler))
+        if not self.multi_gpu or hvd.rank() == 0:
+            self.logger.info("Optimizer: %s, Scheduler: %s" % (self.optimizer.optimizer, self.optimizer.scheduler))
 
         self._train_epoches(data, model, start_step, dev_data=dev_data,
                             teacher_forcing_ratio=teacher_forcing_ratio)

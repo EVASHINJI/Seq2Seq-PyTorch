@@ -23,7 +23,7 @@ parser.add_argument('--max_checkpoints_num', action='store', dest='max_checkpoin
                     help='Max num of checkpoints. //最多保存模型数量。', type=int)
 
 parser.add_argument('--log_level', action='store', dest='log_level', default='info', help='Logging level. //日志的输出等级。')
-parser.add_argument('--log_file', action='store', dest='log_file', default='info', help='Logging file path. //日志的输出路径。')
+parser.add_argument('--log_file', action='store', dest='log_file', default='train.log', help='Logging file path. //日志的输出路径。')
 
 
 # Model learning
@@ -48,6 +48,8 @@ parser.add_argument('--clip_grad', action='store', dest='clip_grad',
                     help='Clip gradients to this norm. //最大梯度截断。', default=5.0, type=float)
 parser.add_argument('--learning_rate', action='store', dest='learning_rate', 
                     help='Learning rate. //学习率', default=0.001, type=float)
+parser.add_argument('--decay_factor', action='store', dest='decay_factor',
+                    help='How much we decay learning rate. //学习率衰减因子。', default=0.995, type=float)
 parser.add_argument('--best_ppl', dest='best_ppl', 
                     help='Initial ppl threshold for saving best model. //用做保存最好模型的初始PPL阈值。', default=100000.0, type=float)
 
