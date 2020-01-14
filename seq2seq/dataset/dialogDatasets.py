@@ -1,20 +1,9 @@
+import random
 import torch
 from torch.utils.data.dataset import Dataset
 from torch.nn.utils.rnn import pad_sequence
 
 from tqdm import tqdm
-
-# def vanilla_dialog_data(subs, obj):
-#     src, tgt = subs
-#     src = src.split(' ')
-#     tgt = tgt.split(' ')
-#     if len(src) > obj.max_src_length or len(tgt) > obj.max_tgt_length:
-#         return None
-#     src_ids = [obj.src_vocab_dic[w] for w in src] + [EOS_token]
-#     tgt_ids = [obj.tgt_vocab_dic[w] for w in tgt] + [EOS_token]
-#     return {"post": torch.LongTensor(src_ids), 
-#             "resp": torch.LongTensor(tgt_ids)}
-
 
 class TranslateData():
     def __init__(self, pad=0):
@@ -90,3 +79,55 @@ class DialogDataset(Dataset):
 
     def __getitem__(self, idx):
         return self.datasets[idx]
+
+class AsyncDialogDataset(Dataset):
+    def __init__(self, data_fp, load_num, transform_fuc, src_vocab, tgt_vocab, max_src_length, max_tgt_length, shuffle=False):
+        self.async_flag = True
+        self.src_vocab = src_vocab
+        self.tgt_vocab = tgt_vocab
+        self.max_src_length = max_src_length
+        self.max_tgt_length = max_tgt_length
+        self.transform_fuc = transform_fuc
+        
+        data_length = 0 
+        # get the count of all samples
+        with open(data_fp, 'r') as f:
+            for _ in tqdm(f, desc="Get Data Length: "): data_length += 1
+        self.data_fp = data_fp
+        self.data_length = data_length
+        self.shuffle = shuffle
+        self.load_num = load_num
+
+        self.finput_obj = open(self.data_fp, 'r')
+        self.load_samples()
+        print("Initialization Completed.")
+
+    def load_samples(self):
+        self.samples = list()
+        # put n samples into memory
+        while len(self.samples) < self.load_num:
+            line = self.finput_obj.readline()
+            if line:
+                data = self.transform_fuc(line.strip().split('\t'), self)
+                if data: self.samples.append(data)
+            else:
+                self.finput_obj = open(self.data_fp, 'r')
+                # EOS initial dataset
+        self.current_sample_num = len(self.samples)
+        self.index = list(range(self.current_sample_num))
+        if self.shuffle:
+            random.shuffle(self.samples)
+ 
+    def __len__(self):
+        return self.data_length
+ 
+    def __getitem__(self, item):
+        idx = self.index[0]
+        data = self.samples[idx]
+        self.index = self.index[1:]
+        self.current_sample_num -= 1
+ 
+        if self.current_sample_num <= 0:
+            self.load_samples()
+            # all the samples in the memory have been used, need to get the new samples
+        return data
